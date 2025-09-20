@@ -1,7 +1,7 @@
-
+// server.js  (Node ESM: ensure package.json has "type": "module")
 import dotenv from "dotenv";
-dotenv.config({ path: ".env.local" }); 
-dotenv.config(); // fallback to .env if present
+dotenv.config({ path: ".env.local" });   // local dev
+dotenv.config();                          // fallback .env
 
 import fs from "node:fs/promises";
 import fssync from "node:fs";
@@ -13,37 +13,49 @@ import cors from "cors";
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-
+/**
+ * CORS: allow localhost, any *.vercel.app (prod & previews), and *.onrender.com
+ * This handles your Vercel production domain and preview deployments automatically.
+ */
 const allowedOrigins = [
-  /^http:\/\/localhost:3000$/,
-  "https://flex-review-dashboard-six.vercel.app", 
+  /^https?:\/\/localhost(:\d+)?$/,    // local dev
+  /^https?:\/\/[^/]+\.vercel\.app$/,  // any vercel subdomain
+  /^https?:\/\/[^/]+\.onrender\.com$/ // your Render domain (direct hits/tests)
 ];
+
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      const ok = allowedOrigins.some((o) =>
-        o instanceof RegExp ? o.test(origin) : o === origin
+      if (!origin) return cb(null, true); // server-to-server, curl, health checks
+      const ok = allowedOrigins.some(rule =>
+        rule instanceof RegExp ? rule.test(origin) : rule === origin
       );
       cb(ok ? null : new Error("Not allowed by CORS"), ok);
     },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: false,
+    optionsSuccessStatus: 204
   })
 );
 
+// Preflight for all routes
+app.options("*", cors());
+
 app.use(express.json());
 
-// Quick env check
+// ---- Env sanity log (safe; does not print secret) ----
 console.log("[env]", {
   HOSTAWAY_ACCOUNT_ID: process.env.HOSTAWAY_ACCOUNT_ID,
   HOSTAWAY_API_KEY_PRESENT: !!process.env.HOSTAWAY_API_KEY,
+  FORCE_MOCK: process.env.FORCE_MOCK
 });
 
-// ---------- Helpers ----------
+// ================= Helpers =================
 async function fetchHostawayReviews() {
   const accountId = process.env.HOSTAWAY_ACCOUNT_ID;
-  const apiKey = process.env.HOSTAWAY_API_KEY;
-  const baseUrl = process.env.HOSTAWAY_API_URL || "https://api.hostaway.com/v1";
+  const apiKey    = process.env.HOSTAWAY_API_KEY;
+  const baseUrl   = process.env.HOSTAWAY_API_URL || "https://api.hostaway.com/v1";
 
   if (!accountId || !apiKey) {
     console.log("[live] missing envs (accountId/apiKey)");
@@ -54,15 +66,26 @@ async function fetchHostawayReviews() {
     const url = `${baseUrl}/reviews?accountId=${encodeURIComponent(accountId)}`;
     console.log("[live] GET", url);
 
-    // If your tenant needs header keys instead of bearer, switch to X-Hostaway-* headers.
+    // If your tenant requires header-keys instead of Bearer, switch to the commented block below.
     const resp = await axios.get(url, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json",
+        Accept: "application/json"
       },
-      timeout: 10000,
-      validateStatus: () => true,
+      timeout: 10_000,
+      validateStatus: () => true
     });
+
+    // Alternative (uncomment if Hostaway expects header keys):
+    // const resp = await axios.get(url, {
+    //   headers: {
+    //     "X-Hostaway-API-Key": apiKey,
+    //     "X-Hostaway-Account-Id": accountId,
+    //     Accept: "application/json"
+    //   },
+    //   timeout: 10_000,
+    //   validateStatus: () => true
+    // });
 
     if (resp.status >= 200 && resp.status < 300) {
       const len = Array.isArray(resp.data?.result) ? resp.data.result.length : "n/a";
@@ -80,9 +103,9 @@ async function fetchHostawayReviews() {
 
 async function loadMockReviews() {
   const candidates = [
-    process.env.MOCK_JSON_PATH,
-    path.join(process.cwd(), "server", "data", "mock-reviews.json"),
-    path.join(process.cwd(), "server", "mock-reviews.json"),
+    process.env.MOCK_JSON_PATH,                                          // explicit override
+    path.join(process.cwd(), "server", "data", "mock-reviews.json"),     // preferred
+    path.join(process.cwd(), "server", "mock-reviews.json")              // fallback
   ].filter(Boolean);
 
   for (const p of candidates) {
@@ -105,9 +128,7 @@ function normalizeReview(item) {
 
   let overall = item.rating;
   if (overall == null && categoriesArr.length) {
-    const vals = categoriesArr
-      .map((c) => Number(c.rating))
-      .filter((v) => Number.isFinite(v));
+    const vals = categoriesArr.map(c => Number(c.rating)).filter(v => Number.isFinite(v));
     if (vals.length) {
       overall = Math.round(((vals.reduce((a, b) => a + b, 0) / vals.length) / 2) * 10) / 10;
     }
@@ -127,30 +148,24 @@ function normalizeReview(item) {
     text: item.publicReview || "",
     submittedAt: submittedIso,
     guestName: item.guestName || null,
-    listingName: item.listingName || "Unknown",
+    listingName: item.listingName || "Unknown"
   };
 }
 
 function buildAggregates(normalized) {
   const byListing = new Map();
-  const byType = new Map();
-  const byMonth = new Map();
-  const push = (m, key, v) => {
-    const arr = m.get(key) || [];
-    arr.push(v);
-    m.set(key, arr);
-  };
+  const byType    = new Map();
+  const byMonth   = new Map();
+  const push = (m, key, v) => { const arr = m.get(key) || []; arr.push(v); m.set(key, arr); };
 
   for (const r of normalized) {
     push(byListing, r.listingName, r);
-    push(byType, r.type, r);
+    push(byType,    r.type,        r);
     if (r.submittedAt) push(byMonth, r.submittedAt.slice(0, 7), r);
   }
 
   const avg = (arr) => {
-    const vals = arr
-      .map((x) => x.overallRating ?? 0)
-      .filter((v) => typeof v === "number");
+    const vals = arr.map(x => x.overallRating ?? 0).filter(v => typeof v === "number");
     if (!vals.length) return null;
     return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
   };
@@ -158,11 +173,8 @@ function buildAggregates(normalized) {
   const listingStats = Array.from(byListing.entries())
     .map(([listing, arr]) => ({ listing, count: arr.length, avgRating: avg(arr) }))
     .sort((a, b) => b.count - a.count || (b.avgRating ?? 0) - (a.avgRating ?? 0));
-  const typeStats = Array.from(byType.entries()).map(([type, arr]) => ({
-    type,
-    count: arr.length,
-    avgRating: avg(arr),
-  }));
+  const typeStats = Array.from(byType.entries())
+    .map(([type, arr]) => ({ type, count: arr.length, avgRating: avg(arr) }));
   const monthly = Array.from(byMonth.entries())
     .map(([month, arr]) => ({ month, count: arr.length, avgRating: avg(arr) }))
     .sort((a, b) => a.month.localeCompare(b.month));
@@ -170,32 +182,27 @@ function buildAggregates(normalized) {
   return { listingStats, typeStats, monthly };
 }
 
-// ----- Approvals persistence (file) -----
-const approvalsDir = path.join(process.cwd(), "server", "data");
+// ===== Approvals persistence (file) =====
+const approvalsDir  = path.join(process.cwd(), "server", "data");
 const approvalsPath = path.join(approvalsDir, "approvals.json");
 
+// Ensure folder/file exist (for Render first boot)
 async function ensureDataDir() {
-  if (!fssync.existsSync(approvalsDir)) {
-    fssync.mkdirSync(approvalsDir, { recursive: true });
-  }
-  if (!fssync.existsSync(approvalsPath)) {
-    fssync.writeFileSync(approvalsPath, "{}");
-  }
+  if (!fssync.existsSync(approvalsDir))  fssync.mkdirSync(approvalsDir, { recursive: true });
+  if (!fssync.existsSync(approvalsPath)) fssync.writeFileSync(approvalsPath, "{}");
 }
 await ensureDataDir();
 
 async function readApprovals() {
-  try {
-    return JSON.parse(await fs.readFile(approvalsPath, "utf8"));
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(await fs.readFile(approvalsPath, "utf8")); }
+  catch { return {}; }
 }
+
 async function writeApprovals(obj) {
   await fs.writeFile(approvalsPath, JSON.stringify(obj, null, 2), "utf8");
 }
 
-// ----- Routes -----
+// ================= Routes =================
 app.get("/api/reviews/hostaway", async (req, res) => {
   try {
     const { source, limit } = req.query;
@@ -215,6 +222,7 @@ app.get("/api/reviews/hostaway", async (req, res) => {
       if (source === "live") raw = await tryLive();
       if (!raw && source !== "mock") raw = await tryLive();
     }
+
     if (!raw) {
       raw = await loadMockReviews();
       used = "mock";
@@ -233,7 +241,7 @@ app.get("/api/reviews/hostaway", async (req, res) => {
       fallbackReason,
       count: normalized.length,
       items: normalized,
-      aggregates,
+      aggregates
     });
   } catch (err) {
     console.error(err);
@@ -259,12 +267,11 @@ app.post("/api/approvals", async (req, res) => {
   }
 });
 
+// Health + Root
 app.get("/healthz", (_req, res) => res.json({ status: "ok" }));
-app.get("/", (_req, res) =>
-  res.send("FlexLiving Reviews API • Try /healthz and /api/reviews/hostaway")
-);
+app.get("/", (_req, res) => res.send("FlexLiving Reviews API • Try /healthz and /api/reviews/hostaway"));
 
-// ---- Start server ----
-app.listen(PORT, () =>
-  console.log(`Express API listening on http://localhost:${PORT}`)
-);
+// ================= Start =================
+app.listen(PORT, () => {
+  console.log(`Express API listening on http://localhost:${PORT}`);
+});
