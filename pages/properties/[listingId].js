@@ -1,10 +1,8 @@
-// pages/properties/[listingId].js
 
-// SSR: fetch reviews + approvals from the API server
 export async function getServerSideProps(context) {
   const { listingId } = context.params;
 
-  // use the same base you used on the dashboard
+  
   const apiBase =
     process.env.API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -24,7 +22,7 @@ export async function getServerSideProps(context) {
   const all = Array.isArray(reviewsJson.items) ? reviewsJson.items : [];
   const approvals = approvalsJson.approvals || {};
 
-  // match listingId slug to listingName (case/space tolerant)
+ 
   const canonical = listingId.replace(/-/g, ' ').toLowerCase().trim();
   const listingReviews = all.filter(r =>
     (r.listingName || '')
@@ -54,7 +52,7 @@ export async function getServerSideProps(context) {
 import Link from 'next/link';
 import Stars from '../../components/Stars';
 
-// ✅ Default export is a React component
+
 export default function Property({ listingId, listingName, reviews }) {
   return (
     <div className="container">

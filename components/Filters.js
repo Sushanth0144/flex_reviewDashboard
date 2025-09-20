@@ -1,6 +1,6 @@
 export default function Filters({ state, setState, listings }) {
   function applyPreset(val) {
-    // Clear both knobs first
+  
     setState(s => ({ ...s, minRating: '', category: '' }));
     if (val === 'top') setState(s => ({ ...s, minRating: '4.5' }));
     if (val === 'solid') setState(s => ({ ...s, minRating: '4.0' }));
@@ -11,7 +11,7 @@ export default function Filters({ state, setState, listings }) {
   return (
     <div className="card" style={{marginBottom:16}}>
       <div className="controls">
-        {/* NEW: Quick filter presets */}
+       
         <select onChange={(e)=>applyPreset(e.target.value)} defaultValue="">
           <option value="">Quick filter</option>
           <option value="top">Top Rated (≥ 4.5)</option>

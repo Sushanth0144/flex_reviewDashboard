@@ -37,3 +37,8 @@ GET https://maps.googleapis.com/maps/api/place/details/json
    ```json
    { "status": "ok", "placeId": "...", "rating": 4.6, "total": 123 }
    ```
+
+Future Implementation Sketch (safe subset)
+ENV: GOOGLE*PLACES_API_KEY and per-property GOOGLE_PLACE_ID*<SLUG>.
+Route (Express): GET /api/reviews/google?placeId=... → { rating, total }.
+UI: Optional small badge next to per-property KPIs.

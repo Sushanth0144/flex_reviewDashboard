@@ -1,4 +1,4 @@
-// pages/dashboard.js
+
 import { useEffect, useMemo, useState } from 'react'
 import Stars, { RatingBadge } from '../components/Stars'
 import Filters from '../components/Filters'

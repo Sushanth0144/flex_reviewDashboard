@@ -1,4 +1,8 @@
-// server.js
+
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' }); 
+dotenv.config();                        
+
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import express from 'express';
@@ -7,49 +11,84 @@ import cors from 'cors';
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: [/localhost:3000$/], credentials: false }));
+app.use(cors({ origin: [/^http:\/\/localhost:3000$/], credentials: false }));
 
 const PORT = process.env.PORT || 4000;
+
+//------------------------------------- Quick env check -----------------------//
+console.log('[env]', {
+  HOSTAWAY_ACCOUNT_ID: process.env.HOSTAWAY_ACCOUNT_ID,
+  HOSTAWAY_API_KEY_PRESENT: !!process.env.HOSTAWAY_API_KEY,
+});
 
 // --- Helpers ---------------------------------------------------------------
 async function fetchHostawayReviews() {
   const accountId = process.env.HOSTAWAY_ACCOUNT_ID;
   const apiKey = process.env.HOSTAWAY_API_KEY;
   const baseUrl = process.env.HOSTAWAY_API_URL || 'https://api.hostaway.com/v1';
-  if (!accountId || !apiKey) return null;
+
+  if (!accountId || !apiKey) {
+    console.log('[live] missing envs (accountId/apiKey)');
+    return { data: null, reason: 'missing_envs' };
+  }
+
   try {
     const url = `${baseUrl}/reviews?accountId=${encodeURIComponent(accountId)}`;
-    const { data } = await axios.get(url, {
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    console.log('[live] GET', url);
+
+    const resp = await axios.get(url, {
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       timeout: 10000,
+      validateStatus: () => true, // let us inspect non-2xx
     });
-    return data;
+
+    if (resp.status >= 200 && resp.status < 300) {
+      const len = Array.isArray(resp.data?.result) ? resp.data.result.length : 'n/a';
+      console.log('[live] ok, result length:', len);
+      return { data: resp.data, reason: null };
+    }
+
+    console.warn(`[live] ${resp.status} from Hostaway`, resp.data || '');
+    return { data: null, reason: `http_${resp.status}` };
   } catch (err) {
     console.warn('[hostaway] fetch failed, falling back to mock:', err?.message || err);
-    return null;
+    return { data: null, reason: 'network_error' };
   }
 }
 
 async function loadMockReviews() {
-  const mockPath = process.env.MOCK_JSON_PATH || path.join(process.cwd(), 'server', 'mock-reviews.json');
-  try {
-    const raw = await fs.readFile(mockPath, 'utf8');
-    return JSON.parse(raw);
-  } catch (err) {
-    const bundled = await fs.readFile(path.join(process.cwd(), 'server', 'mock-reviews.json'), 'utf8');
-    return JSON.parse(bundled);
+  const candidates = [
+    process.env.MOCK_JSON_PATH,                                            // explicit override
+    path.join(process.cwd(), 'server', 'data', 'mock-reviews.json'),       // preferred
+    path.join(process.cwd(), 'server', 'mock-reviews.json'),               // fallback
+  ].filter(Boolean);
+
+  for (const p of candidates) {
+    try {
+      const raw = await fs.readFile(p, 'utf8');
+      console.log('[mock] loaded from:', p);
+      return JSON.parse(raw);
+    } catch { /* try next */ }
   }
+  throw new Error('mock-reviews.json not found in server/data or server/ (set MOCK_JSON_PATH to override).');
 }
 
 function normalizeReview(item) {
   const categoriesArr = Array.isArray(item.reviewCategory) ? item.reviewCategory : [];
-  const categories = Object.fromEntries(categoriesArr.map(({ category, rating }) => [String(category), Number(rating)]));
+  const categories = Object.fromEntries(
+    categoriesArr.map(({ category, rating }) => [String(category), Number(rating)])
+  );
+
   let overall = item.rating;
   if (overall == null && categoriesArr.length) {
     const vals = categoriesArr.map(c => Number(c.rating)).filter(v => Number.isFinite(v));
-    if (vals.length) overall = Math.round(((vals.reduce((a,b)=>a+b,0)/vals.length)/2)*10)/10;
+    if (vals.length) overall = Math.round(((vals.reduce((a, b) => a + b, 0) / vals.length) / 2) * 10) / 10;
   }
-  const submittedIso = item.submittedAt ? new Date(item.submittedAt.replace(' ', 'T') + 'Z').toISOString() : null;
+
+  const submittedIso = item.submittedAt
+    ? new Date(item.submittedAt.replace(' ', 'T') + 'Z').toISOString()
+    : null;
+
   return {
     id: String(item.id),
     channel: 'hostaway',
@@ -68,54 +107,95 @@ function buildAggregates(normalized) {
   const byListing = new Map();
   const byType = new Map();
   const byMonth = new Map();
+
   const push = (m, key, v) => { const arr = m.get(key) || []; arr.push(v); m.set(key, arr); };
+
   for (const r of normalized) {
     push(byListing, r.listingName, r);
     push(byType, r.type, r);
-    if (r.submittedAt) push(byMonth, r.submittedAt.slice(0,7), r);
+    if (r.submittedAt) push(byMonth, r.submittedAt.slice(0, 7), r);
   }
+
   const avg = arr => {
     const vals = arr.map(x => (x.overallRating ?? 0)).filter(v => typeof v === 'number');
     if (!vals.length) return null;
-    return Math.round((vals.reduce((a,b)=>a+b,0)/vals.length)*10)/10;
+    return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
   };
-  const listingStats = Array.from(byListing.entries()).map(([listing, arr]) => ({
-    listing, count: arr.length, avgRating: avg(arr),
-  })).sort((a,b)=> b.count - a.count || (b.avgRating ?? 0) - (a.avgRating ?? 0));
-  const typeStats = Array.from(byType.entries()).map(([type, arr]) => ({
-    type, count: arr.length, avgRating: avg(arr),
-  }));
-  const monthly = Array.from(byMonth.entries()).map(([month, arr]) => ({
-    month, count: arr.length, avgRating: avg(arr),
-  })).sort((a,b)=> a.month.localeCompare(b.month));
+
+  const listingStats = Array.from(byListing.entries())
+    .map(([listing, arr]) => ({ listing, count: arr.length, avgRating: avg(arr) }))
+    .sort((a, b) => b.count - a.count || (b.avgRating ?? 0) - (a.avgRating ?? 0));
+
+  const typeStats = Array.from(byType.entries())
+    .map(([type, arr]) => ({ type, count: arr.length, avgRating: avg(arr) }));
+
+  const monthly = Array.from(byMonth.entries())
+    .map(([month, arr]) => ({ month, count: arr.length, avgRating: avg(arr) }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+
   return { listingStats, typeStats, monthly };
 }
 
 // --- Approvals persistence (file) -----------------------------------------
 const approvalsPath = path.join(process.cwd(), 'server', 'data', 'approvals.json');
-async function readApprovals() { try { return JSON.parse(await fs.readFile(approvalsPath, 'utf8')); } catch { return {}; } }
-async function writeApprovals(obj) { await fs.writeFile(approvalsPath, JSON.stringify(obj, null, 2), 'utf8'); }
+async function readApprovals() {
+  try { return JSON.parse(await fs.readFile(approvalsPath, 'utf8')); }
+  catch { return {}; }
+}
+async function writeApprovals(obj) {
+  await fs.writeFile(approvalsPath, JSON.stringify(obj, null, 2), 'utf8');
+}
 
 // --- Routes ---------------------------------------------------------------
 app.get('/api/reviews/hostaway', async (req, res) => {
   try {
     const { source, limit } = req.query;
+    const forceMock = String(process.env.FORCE_MOCK || '').toLowerCase() === 'true';
+
     let raw = null;
-    if (source === 'live') raw = await fetchHostawayReviews();
-    if (!raw && source !== 'mock') raw = await fetchHostawayReviews();
-    if (!raw) raw = await loadMockReviews();
+    let used = 'mock';
+    let fallbackReason = null;
+
+    const tryLive = async () => {
+      const { data, reason } = await fetchHostawayReviews();
+      if (!data) fallbackReason = fallbackReason || reason || 'live_fetch_failed';
+      return data;
+    };
+
+    if (!forceMock) {
+      if (source === 'live') raw = await tryLive();
+      if (!raw && source !== 'mock') raw = await tryLive();
+    }
+
+    if (!raw) {
+      raw = await loadMockReviews();
+      used = 'mock';
+    } else {
+      used = 'live';
+    }
+
     const items = Array.isArray(raw?.result) ? raw.result : [];
     const sliced = Number.isFinite(Number(limit)) ? items.slice(0, Number(limit)) : items;
     const normalized = sliced.map(normalizeReview);
     const aggregates = buildAggregates(normalized);
-    res.json({ status: 'ok', count: normalized.length, items: normalized, aggregates });
+
+    res.json({
+      status: 'ok',
+      source: used,
+      fallbackReason,  // null if live worked; reason string if fell back
+      count: normalized.length,
+      items: normalized,
+      aggregates,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ status: 'error', message: err?.message || 'Internal Server Error' });
   }
 });
 
-app.get('/api/approvals', async (_req, res) => res.json({ status: 'ok', approvals: await readApprovals() }));
+app.get('/api/approvals', async (_req, res) => {
+  res.json({ status: 'ok', approvals: await readApprovals() });
+});
 
 app.post('/api/approvals', async (req, res) => {
   try {
@@ -132,5 +212,8 @@ app.post('/api/approvals', async (req, res) => {
 });
 
 app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
+app.get('/', (_req, res) => {
+  res.send('FlexLiving Reviews API • Try /healthz and /api/reviews/hostaway');
+});
 
 app.listen(PORT, () => console.log(`Express API listening on http://localhost:${PORT}`));
