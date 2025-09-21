@@ -17,11 +17,17 @@ function Dropdown({ label, items }) {
   useOutside(ref, () => setOpen(false))
   return (
     <div className={`nav-dd ${open ? 'open' : ''}`} ref={ref}>
-      <button className="nav-link" onClick={() => setOpen(o => !o)}>
+      <button
+        type="button"
+        className="nav-link"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+      >
         {label} <span className="chev">▾</span>
       </button>
       {open && (
-        <div className="nav-menu">
+        <div className="nav-menu" role="menu">
           {items.map(({ label, href }, i) =>
             href.startsWith('http') ? (
               <a key={i} className="nav-item" href={href} target="_blank" rel="noreferrer">{label}</a>
@@ -45,27 +51,49 @@ export default function Nav() {
 
         <div className="nav-right">
           <Link className="nav-link" href="/dashboard">Dashboard</Link>
-          <Dropdown label="Properties" items={[{ label: 'All Properties', href: '/dashboard#properties' }]} />
-          <Dropdown label="Reviews" items={[
-            { label: 'All Reviews', href: '/dashboard#reviews' },
-            { label: 'Approved', href: '/dashboard#approved' },
-            { label: 'Needs Attention', href: '/dashboard?q=wifi' },
-          ]} />
+
+          <Dropdown
+            label="Properties"
+            items={[{ label: 'All Properties', href: '/dashboard#properties' }]}
+          />
+
+          <Dropdown
+            label="Reviews"
+            items={[
+              { label: 'All Reviews', href: '/dashboard#reviews' },
+              { label: 'Approved', href: '/dashboard#approved' },
+              { label: 'Needs Attention', href: '/dashboard?q=wifi' },
+            ]}
+          />
+
+          {/* Keep Analytics as a plain link; styling aligns with dropdown triggers */}
           <Link className="nav-link" href="/dashboard#analytics">Analytics</Link>
-          <Dropdown label="Approvals" items={[
-            { label: 'Pending Approval', href: '/dashboard?minRating=4.0#reviews' },
-            { label: 'Approved (Live)', href: '/dashboard#approved' },
-          ]} />
-          <Dropdown label="Settings" items={[
-            { label: 'Data Sources', href: '#settings-datasources' },
-            { label: 'Channels & Categories', href: '#settings-categories' },
-            { label: 'Team & Roles', href: '#settings-team' },
-          ]} />
-          <Dropdown label="Help" items={[
-            { label: 'Docs (README)', href: 'https://localhost/README' },
-            { label: 'Keyboard Shortcuts', href: '#help-shortcuts' },
-            { label: 'Report an Issue', href: '#help-support' },
-          ]} />
+
+          <Dropdown
+            label="Approvals"
+            items={[
+              { label: 'Pending Approval', href: '/dashboard?minRating=4.0#reviews' },
+              { label: 'Approved (Live)', href: '/dashboard#approved' },
+            ]}
+          />
+
+          <Dropdown
+            label="Settings"
+            items={[
+              { label: 'Data Sources', href: '#settings-datasources' },
+              { label: 'Channels & Categories', href: '#settings-categories' },
+              { label: 'Team & Roles', href: '#settings-team' },
+            ]}
+          />
+
+          <Dropdown
+            label="Help"
+            items={[
+              { label: 'Docs (README)', href: 'https://localhost/README' },
+              { label: 'Keyboard Shortcuts', href: '#help-shortcuts' },
+              { label: 'Report an Issue', href: '#help-support' },
+            ]}
+          />
         </div>
       </div>
     </div>

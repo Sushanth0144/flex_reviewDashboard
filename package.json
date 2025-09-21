@@ -8,12 +8,10 @@
     "dev": "concurrently -k -n API,WEB -c blue,green \"node server.js\" \"next dev -p 3000\"",
     "dev:api": "node server.js",
     "dev:web": "next dev -p 3000",
-
     "//:2": "=== Production starts ===",
     "//:3": "Render uses `npm start` -> API only",
     "start": "node server.js",
     "start:web": "next start -p 3000",
-
     "//:4": "Vercel ignores start; it uses `build` for the Next.js app",
     "build": "next build"
   },
