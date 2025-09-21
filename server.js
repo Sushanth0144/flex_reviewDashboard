@@ -14,33 +14,45 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 /**
- * CORS: allow localhost, any *.vercel.app (prod & previews), and *.onrender.com
- * This handles your Vercel production domain and preview deployments automatically.
+ * CORS (robust):
+ * - allows localhost / 127.0.0.1
+ * - any *.vercel.app (prod & preview)
+ * - any *.onrender.com (direct API hits)
+ * - allows null/no origin (curl/healthchecks)
+ * - CORS_ALLOW_ALL=true to temporarily allow all origins (debug)
  */
-const allowedOrigins = [
-  /^https?:\/\/localhost(:\d+)?$/,    // local dev
-  /^https?:\/\/[^/]+\.vercel\.app$/,  // any vercel subdomain
-  /^https?:\/\/[^/]+\.onrender\.com$/ // your Render domain (direct hits/tests)
-];
+const allowAll = String(process.env.CORS_ALLOW_ALL || "").toLowerCase() === "true";
+const corsOrigin = (origin, cb) => {
+  // Log incoming origins in non-prod for debugging
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[CORS] Origin:", origin);
+  }
+  if (allowAll || !origin || origin === "null") return cb(null, true);
+
+  let host = "";
+  try { host = new URL(origin).hostname; }
+  catch { return cb(new Error("Not allowed by CORS")); }
+
+  const ok =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host.endsWith(".vercel.app") ||
+    host.endsWith(".onrender.com");
+
+  return cb(ok ? null : new Error("Not allowed by CORS"), ok);
+};
 
 app.use(
   cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // server-to-server, curl, health checks
-      const ok = allowedOrigins.some(rule =>
-        rule instanceof RegExp ? rule.test(origin) : rule === origin
-      );
-      cb(ok ? null : new Error("Not allowed by CORS"), ok);
-    },
+    origin: corsOrigin,
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: false,
     optionsSuccessStatus: 204
   })
 );
-
 // Preflight for all routes
-app.options("*", cors());
+app.options("*", cors({ origin: corsOrigin }));
 
 app.use(express.json());
 
@@ -48,7 +60,8 @@ app.use(express.json());
 console.log("[env]", {
   HOSTAWAY_ACCOUNT_ID: process.env.HOSTAWAY_ACCOUNT_ID,
   HOSTAWAY_API_KEY_PRESENT: !!process.env.HOSTAWAY_API_KEY,
-  FORCE_MOCK: process.env.FORCE_MOCK
+  FORCE_MOCK: process.env.FORCE_MOCK,
+  NODE_ENV: process.env.NODE_ENV
 });
 
 // ================= Helpers =================
@@ -66,17 +79,14 @@ async function fetchHostawayReviews() {
     const url = `${baseUrl}/reviews?accountId=${encodeURIComponent(accountId)}`;
     console.log("[live] GET", url);
 
-    // If your tenant requires header-keys instead of Bearer, switch to the commented block below.
+    // Bearer style (default). If your tenant uses header-keys, see the alternative below.
     const resp = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json"
-      },
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
       timeout: 10_000,
       validateStatus: () => true
     });
 
-    // Alternative (uncomment if Hostaway expects header keys):
+    // Alternative header-keys style (uncomment if required by Hostaway tenant):
     // const resp = await axios.get(url, {
     //   headers: {
     //     "X-Hostaway-API-Key": apiKey,
