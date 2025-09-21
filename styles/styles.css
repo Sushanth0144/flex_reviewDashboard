@@ -30,11 +30,11 @@
   
   /* Normalize link & button so all tabs align perfectly */
   .nav-link{
-    display:inline-flex;            /* consistent for <a> and <button> */
-    align-items:center;             /* vertical centering */
+    display:inline-flex;            
+    align-items:center;            
     gap:6px;
-    height:36px;                    /* uniform height prevents baseline drift */
-    line-height:1;                  /* avoid font leading affecting height */
+    height:36px;                   
+    line-height:1;                  
     vertical-align:middle;
     padding:10px 12px;
     border-radius:12px;
@@ -43,7 +43,7 @@
     cursor:pointer;
     color:#eaf5f1;
     text-decoration:none;
-    font:inherit;                   /* buttons inherit same font metrics */
+    font:inherit;                  
   }
   .nav-link:hover{ background:rgba(255,255,255,.08); }
   
@@ -90,6 +90,34 @@
     background-repeat:no-repeat; background-position: right 12px center; padding-right:28px;
   }
   
+  /* labels + date picker icons */
+.label{
+  font-size:12px;
+  color:var(--muted);
+  margin:0 6px 0 2px;
+}
+.date-range{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.input-icon{ position:relative; }
+.input.with-icon{ padding-left:36px; } /* reserve space for icon */
+
+.icon-calendar{
+  position:absolute;
+  left:10px;
+  top:50%;
+  transform:translateY(-50%);
+  width:18px;
+  height:18px;
+  opacity:.65;
+  pointer-events:none;
+  color:var(--green-300);
+}
+
   .button{ background:#fff; border:1px solid var(--line); color:var(--ink); padding:10px 14px; border-radius:14px; cursor:pointer; }
   .button.primary{ background: var(--green); color:#fff; border:none; font-weight:700; }
   

@@ -2,21 +2,22 @@
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
 
-
+// Client-only datepicker (avoids SSR build errors)
 const DatePicker = dynamic(
-  () => import("react-datepicker").then((mod) => mod.default),
+  () => import("react-datepicker").then((m) => m.default),
   { ssr: false }
 );
 
 export default function Filters({ state, setState, listings }) {
   function applyPreset(val) {
     setState((s) => ({ ...s, minRating: "", category: "" }));
-    if (val === "top") setState((s) => ({ ...s, minRating: "4.5" }));
+    if (val === "top")   setState((s) => ({ ...s, minRating: "4.5" }));
     if (val === "solid") setState((s) => ({ ...s, minRating: "4.0" }));
     if (val === "clean") setState((s) => ({ ...s, category: "cleanliness" }));
-    if (val === "wifi") setState((s) => ({ ...s, category: "wifi" }));
+    if (val === "wifi")  setState((s) => ({ ...s, category: "wifi" }));
   }
 
+  // ISO (yyyy-mm-dd) <-> Date
   const fromDate = useMemo(
     () => (state.from ? new Date(state.from + "T00:00:00Z") : null),
     [state.from]
@@ -28,7 +29,6 @@ export default function Filters({ state, setState, listings }) {
 
   const onPickFrom = (d) =>
     setState((s) => ({ ...s, from: d ? d.toISOString().slice(0, 10) : "" }));
-
   const onPickTo = (d) =>
     setState((s) => ({ ...s, to: d ? d.toISOString().slice(0, 10) : "" }));
 
@@ -94,26 +94,45 @@ export default function Filters({ state, setState, listings }) {
           onChange={(e) => setState((s) => ({ ...s, q: e.target.value }))}
         />
 
-        {/* Date pickers (client-only) */}
-        <DatePicker
-          selected={fromDate}
-          onChange={onPickFrom}
-          placeholderText="dd/mm/yyyy"
-          dateFormat="dd/MM/yyyy"
-          className="input"
-          isClearable
-          autoComplete="off"
-        />
-        <DatePicker
-          selected={toDate}
-          onChange={onPickTo}
-          placeholderText="dd/mm/yyyy"
-          dateFormat="dd/MM/yyyy"
-          className="input"
-          isClearable
-          autoComplete="off"
-          minDate={fromDate || undefined}
-        />
+        {/* Date range (labels + icons) */}
+        <div className="date-range">
+          <label className="label">From</label>
+          <div className="input-icon">
+            <svg className="icon-calendar" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 2v3M17 2v3M3 9h18M4 7h16a1 1 0 0 1 1 1v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1z"
+                    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <DatePicker
+              selected={fromDate}
+              onChange={onPickFrom}
+              placeholderText="dd/mm/yyyy"
+              dateFormat="dd/MM/yyyy"
+              className="input with-icon"
+              isClearable
+              autoComplete="off"
+              name="filter-from-date"
+            />
+          </div>
+
+          <label className="label">To</label>
+          <div className="input-icon">
+            <svg className="icon-calendar" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 2v3M17 2v3M3 9h18M4 7h16a1 1 0 0 1 1 1v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1z"
+                    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <DatePicker
+              selected={toDate}
+              onChange={onPickTo}
+              placeholderText="dd/mm/yyyy"
+              dateFormat="dd/MM/yyyy"
+              className="input with-icon"
+              isClearable
+              autoComplete="off"
+              name="filter-to-date"
+              minDate={fromDate || undefined}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
