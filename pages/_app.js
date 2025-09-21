@@ -1,4 +1,4 @@
-
+import 'react-datepicker/dist/react-datepicker.css';
 import '../public/styles.css'
 import Nav from '../components/Nav'
 export default function MyApp({ Component, pageProps }) {
