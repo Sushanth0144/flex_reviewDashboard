@@ -1,5 +1,12 @@
-import DatePicker from "react-datepicker";
+// components/Filters.js
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
+
+
+const DatePicker = dynamic(
+  () => import("react-datepicker").then((mod) => mod.default),
+  { ssr: false }
+);
 
 export default function Filters({ state, setState, listings }) {
   function applyPreset(val) {
@@ -10,7 +17,6 @@ export default function Filters({ state, setState, listings }) {
     if (val === "wifi") setState((s) => ({ ...s, category: "wifi" }));
   }
 
-  
   const fromDate = useMemo(
     () => (state.from ? new Date(state.from + "T00:00:00Z") : null),
     [state.from]
@@ -43,9 +49,7 @@ export default function Filters({ state, setState, listings }) {
         >
           <option value="">All listings</option>
           {listings.map((l) => (
-            <option key={l} value={l}>
-              {l}
-            </option>
+            <option key={l} value={l}>{l}</option>
           ))}
         </select>
 
@@ -90,19 +94,16 @@ export default function Filters({ state, setState, listings }) {
           onChange={(e) => setState((s) => ({ ...s, q: e.target.value }))}
         />
 
-        
+        {/* Date pickers (client-only) */}
         <DatePicker
-          selected={fromDate}                 // null => shows placeholder
+          selected={fromDate}
           onChange={onPickFrom}
           placeholderText="dd/mm/yyyy"
           dateFormat="dd/MM/yyyy"
           className="input"
           isClearable
           autoComplete="off"
-          name="filter-from-date"
         />
-
-        
         <DatePicker
           selected={toDate}
           onChange={onPickTo}
@@ -111,7 +112,6 @@ export default function Filters({ state, setState, listings }) {
           className="input"
           isClearable
           autoComplete="off"
-          name="filter-to-date"
           minDate={fromDate || undefined}
         />
       </div>
